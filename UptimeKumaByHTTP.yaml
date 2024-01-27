@@ -1,0 +1,321 @@
+zabbix_export:
+  version: '6.4'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates
+  templates:
+    - uuid: 6b7ae923c17440729f656f6cad5cb180
+      template: 'Uptime Kuma by HTTP'
+      name: 'Uptime Kuma by HTTP'
+      description: |
+        CHANGELOG:
+        24-01-25 Initial
+        
+        Instructions:
+        Set the $UK.URL and $UK.APIKEY macros in this template/on a host.
+        The API key is generated from Uptime Kuma settings (also known as Prometheus API key).
+        
+        Issues:
+        Log at: https://github.com/twistedlogick/Zabbix
+      groups:
+        - name: Templates
+      items:
+        - uuid: 1849382d55de4e499321be23c9f203c3
+          name: 'Uptime Kuma - API Availability'
+          type: SIMPLE
+          key: 'net.tcp.service["https","{$UK.URL}","443"]'
+          description: 'The availability of the Uptime Kuma API.'
+          valuemap:
+            name: 'API Status'
+          tags:
+            - tag: Application
+              value: 'Uptime Kuma'
+          triggers:
+            - uuid: 15db50abd7284bce82d40bf51e79edec
+              expression: 'last(/Uptime Kuma by HTTP/net.tcp.service["https","{$UK.URL}","443"])=0'
+              name: 'Uptime Kuma - API is Unavailable'
+              priority: AVERAGE
+              description: 'The Uptime Kuma API is unavailable.'
+              tags:
+                - tag: Application
+                  value: 'Uptime Kuma'
+        - uuid: 627823f50e45472e919180ff621d9dd2
+          name: 'Uptime Kuma - Raw Data'
+          type: HTTP_AGENT
+          key: uk.raw
+          history: 5d
+          trends: '0'
+          value_type: TEXT
+          authtype: BASIC
+          password: '{$UK.APIKEY}'
+          description: 'The raw Prometheus data from the Uptime Kuma API, in a JSON format.'
+          preprocessing:
+            - type: PROMETHEUS_TO_JSON
+              parameters:
+                - ''
+          timeout: 5s
+          url: '{$UK.URL}'
+          tags:
+            - tag: Application
+              value: 'Uptime Kuma'
+      discovery_rules:
+        - uuid: d958eb3e5b5643d591fe5f244da1a6f4
+          name: 'Discover Items'
+          type: DEPENDENT
+          key: uk.discovery
+          delay: '0'
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#MONITORNAME}'
+                value: '{$UK.MONITORNAME.MATCHES}'
+                formulaid: A
+              - macro: '{#MONITORNAME}'
+                value: '{$UK.MONITORNAME.NOTMATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          item_prototypes:
+            - uuid: 1daf8353a7ee48948742f9e5cc815539
+              name: 'Uptime Kuma: {#MONITORNAME} - Certificate Days Remaining'
+              type: DEPENDENT
+              key: 'uk.cd.[{#MONITORNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              units: days
+              description: 'The number of days left for the certificate of {#MONITORNAME}.'
+              valuemap:
+                name: 'Certificate Days'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.name == ''monitor_cert_days_remaining'' && @.labels.monitor_name == "{#MONITORNAME}")].value'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '9999'
+                - type: JSONPATH
+                  parameters:
+                    - '$[0]'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '9999'
+              master_item:
+                key: uk.raw
+              tags:
+                - tag: Application
+                  value: 'Uptime Kuma'
+                - tag: 'Uptime Kuma'
+                  value: 'Certificate Days Remaining'
+                - tag: 'Uptime Kuma'
+                  value: '{#MONITORNAME}'
+              trigger_prototypes:
+                - uuid: f8d16f2a82694fdf93ff1f3e7e1aeddb
+                  expression: 'last(/Uptime Kuma by HTTP/uk.cd.[{#MONITORNAME}])<1'
+                  name: 'Uptime Kuma - {#MONITORNAME} - Certificate has expired'
+                  priority: HIGH
+                  description: '{#MONITORNAME} certificate has expired.'
+                  tags:
+                    - tag: Application
+                      value: 'Uptime Kuma'
+                    - tag: 'Uptime Kuma'
+                      value: '{#MONITORNAME}'
+                - uuid: 35dcb504250a4f2da4e3981deaec2cb2
+                  expression: 'last(/Uptime Kuma by HTTP/uk.cd.[{#MONITORNAME}])<={$UK.CERT.DAYS.CRIT}'
+                  name: 'Uptime Kuma - {#MONITORNAME} - Certificate is due to expire in {$UK.CERT.DAYS.CRIT} days'
+                  priority: AVERAGE
+                  description: '{#MONITORNAME} certificate is due to expire in {$UK.CERT.DAYS.CRIT}.'
+                  dependencies:
+                    - name: 'Uptime Kuma - {#MONITORNAME} - Certificate has expired'
+                      expression: 'last(/Uptime Kuma by HTTP/uk.cd.[{#MONITORNAME}])<1'
+                  tags:
+                    - tag: Application
+                      value: 'Uptime Kuma'
+                    - tag: 'Uptime Kuma'
+                      value: '{#MONITORNAME}'
+                - uuid: 0350cbcbf02c4ceb92d589d7eaa2cd84
+                  expression: 'last(/Uptime Kuma by HTTP/uk.cd.[{#MONITORNAME}])<={$UK.CERT.DAYS.WARN}'
+                  name: 'Uptime Kuma - {#MONITORNAME} - Certificate is due to expire in {$UK.CERT.DAYS.WARN} days'
+                  priority: WARNING
+                  description: '{#MONITORNAME} certificate is due to expire in {$UK.CERT.DAYS.WARN}.'
+                  dependencies:
+                    - name: 'Uptime Kuma - {#MONITORNAME} - Certificate is due to expire in {$UK.CERT.DAYS.CRIT} days'
+                      expression: 'last(/Uptime Kuma by HTTP/uk.cd.[{#MONITORNAME}])<={$UK.CERT.DAYS.CRIT}'
+                  tags:
+                    - tag: Application
+                      value: 'Uptime Kuma'
+                    - tag: 'Uptime Kuma'
+                      value: '{#MONITORNAME}'
+            - uuid: dd7cd5e63b8c486b9d763568770c2bf9
+              name: 'Uptime Kuma: {#MONITORNAME} - Certificate Valid'
+              type: DEPENDENT
+              key: 'uk.cv.[{#MONITORNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              description: 'If the certificate is valid for {#MONITORNAME}.'
+              valuemap:
+                name: 'Certificate Validity'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.name == ''monitor_cert_is_valid'' && @.labels.monitor_name == "{#MONITORNAME}")].value'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '-1'
+                - type: JSONPATH
+                  parameters:
+                    - '$[0]'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '-1'
+              master_item:
+                key: uk.raw
+              tags:
+                - tag: Application
+                  value: 'Uptime Kuma'
+                - tag: 'Uptime Kuma'
+                  value: 'Certificate Validity'
+                - tag: 'Uptime Kuma'
+                  value: '{#MONITORNAME}'
+              trigger_prototypes:
+                - uuid: e2dc09755074441a89ea3186725ea339
+                  expression: 'last(/Uptime Kuma by HTTP/uk.cv.[{#MONITORNAME}])=0'
+                  name: 'Uptime Kuma - {#MONITORNAME} - Certificate is invalid'
+                  priority: AVERAGE
+                  description: 'Certificate is invalid for {#MONITORNAME}.'
+                  tags:
+                    - tag: Application
+                      value: 'Uptime Kuma'
+                    - tag: 'Uptime Kuma'
+                      value: '{#MONITORNAME}'
+            - uuid: 816f9fea3fde4a6ab48e550039f91304
+              name: 'Uptime Kuma: {#MONITORNAME} - Response Time'
+              type: DEPENDENT
+              key: 'uk.rt.[{#MONITORNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              units: ms
+              description: 'The response time of the monitor for {#MONITORNAME}.'
+              valuemap:
+                name: 'Response Time'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.name == ''monitor_response_time'' && @.labels.monitor_name == "{#MONITORNAME}")].value'
+                - type: JSONPATH
+                  parameters:
+                    - '$[0]'
+              master_item:
+                key: uk.raw
+              tags:
+                - tag: Application
+                  value: 'Uptime Kuma'
+                - tag: 'Uptime Kuma'
+                  value: 'Response Time'
+                - tag: 'Uptime Kuma'
+                  value: '{#MONITORNAME}'
+            - uuid: 16a8c2cc3ffb4cd59060f6df99648a85
+              name: 'Uptime Kuma: {#MONITORNAME} - Status'
+              type: DEPENDENT
+              key: 'uk.status.[{#MONITORNAME}]'
+              delay: '0'
+              value_type: FLOAT
+              description: 'The status of the monitor for {#MONITORNAME}.'
+              valuemap:
+                name: 'Service Uptime Status'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$[?(@.name == ''monitor_status'' && @.labels.monitor_name == "{#MONITORNAME}")].value'
+                - type: JSONPATH
+                  parameters:
+                    - '$[0]'
+              master_item:
+                key: uk.raw
+              tags:
+                - tag: Application
+                  value: 'Uptime Kuma'
+                - tag: 'Uptime Kuma'
+                  value: Status
+                - tag: 'Uptime Kuma'
+                  value: '{#MONITORNAME}'
+              trigger_prototypes:
+                - uuid: 067251f32d774d5c985ad77cc117d2ed
+                  expression: 'last(/Uptime Kuma by HTTP/uk.status.[{#MONITORNAME}])=0'
+                  name: 'Uptime Kuma - {#MONITORNAME} is down'
+                  priority: AVERAGE
+                  description: '{#MONITORNAME} is currently unavailable.'
+                  tags:
+                    - tag: Application
+                      value: 'Uptime Kuma'
+                    - tag: 'Uptime Kuma'
+                      value: '{#MONITORNAME}'
+          master_item:
+            key: uk.raw
+          lld_macro_paths:
+            - lld_macro: '{#MONITORNAME}'
+              path: $.labels.monitor_name
+            - lld_macro: '{#MONITORTYPE}'
+              path: $.labels.monitor_type
+            - lld_macro: '{#MONITORURL}'
+              path: $.labels.monitor_url
+            - lld_macro: '{#NAME}'
+              path: $.name
+            - lld_macro: '{#VALUE}'
+              path: $.value
+      tags:
+        - tag: Application
+          value: 'Uptime Kuma'
+      macros:
+        - macro: '{$UK.APIKEY}'
+          type: SECRET_TEXT
+          description: 'The Uptime Kuma Prometheus API key.'
+        - macro: '{$UK.CERT.DAYS.CRIT}'
+          value: '2'
+          description: 'If cert days left is less than this, fire a critical trigger.'
+        - macro: '{$UK.CERT.DAYS.WARN}'
+          value: '30'
+          description: 'If cert days left is less than this, fire a warning trigger.'
+        - macro: '{$UK.MONITORNAME.MATCHES}'
+          value: '.*'
+          description: 'Used in discovering monitored services.'
+        - macro: '{$UK.MONITORNAME.NOTMATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: 'Used in discovering monitored services.'
+        - macro: '{$UK.URL}'
+          value: 'https://<enter Uptime Kuma url here>/metrics'
+          description: 'The URL for the Uptime Kuma instance + /metrics on the end'
+      valuemaps:
+        - uuid: 95da536fbc7f497fbbfe0f1667870c96
+          name: 'API Status'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+        - uuid: a4369c67efa84f399662fafacdd38077
+          name: 'Certificate Days'
+          mappings:
+            - value: '9999'
+              newvalue: N/A
+        - uuid: eff45f3456004ae7aa4331c3fe0e4e5b
+          name: 'Certificate Validity'
+          mappings:
+            - value: '0'
+              newvalue: 'No'
+            - value: '1'
+              newvalue: 'Yes'
+            - value: '-1'
+              newvalue: N/A
+        - uuid: 7e455f030d104a6cba0a287f5ac78b7b
+          name: 'Response Time'
+          mappings:
+            - value: '-1'
+              newvalue: N/A
+        - uuid: f20c278e362f43f685b4b0a5b269a9eb
+          name: 'Service Uptime Status'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+            - value: '2'
+              newvalue: Pending
+            - value: '3'
+              newvalue: Maintenance
+            - value: '-1'
+              newvalue: N/A
