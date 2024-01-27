@@ -1,4 +1,5 @@
 **Zabbix Templates/Scripts**
+
 Using this GitHub to upload any useful Zabbix templates/scripts that I create.
 
 Currently comprising of:
